@@ -19,14 +19,26 @@ const fmt = d3.format(".4f");
 const fmtP = p => (p == null ? "–" : p < 1e-4 ? p.toExponential(1) : d3.format(".4f")(p));
 
 const el = id => document.getElementById(id);
-const S = { data: null, metric: "pagerank", sigOnly: false, selected: null, hidden: new Set() };
+const S = { data: null, metric: "pagerank", sigOnly: false, selected: null,
+            hidden: new Set(), userZoomed: false };
+
+// The toolbar wraps at narrow widths, so the graph pane measures the chrome
+// above it instead of trusting a hard-coded offset.
+function measureChrome() {
+  const h = document.querySelector("header").offsetHeight + document.querySelector(".toolbar").offsetHeight;
+  document.documentElement.style.setProperty("--chrome", h + "px");
+}
+measureChrome();
 
 const svg = d3.select("#graph");
 const root = svg.append("g");
 const gLinks = root.append("g").attr("class", "links");
 const gNodes = root.append("g").attr("class", "nodes");
 const gLabels = root.append("g").attr("class", "labels");
-const zoom = d3.zoom().scaleExtent([0.15, 8]).on("zoom", e => root.attr("transform", e.transform));
+const zoom = d3.zoom().scaleExtent([0.15, 8]).on("zoom", e => {
+  root.attr("transform", e.transform);
+  if (e.sourceEvent) S.userZoomed = true;  // stop auto-fitting once they take over
+});
 svg.call(zoom).on("dblclick.zoom", null);
 
 let sim = null;
@@ -41,25 +53,31 @@ async function init() {
   el("metric").onchange = e => { S.metric = e.target.value; draw(); };
   el("sigonly").onchange = e => { S.sigOnly = e.target.checked; draw(); };
   el("search").oninput = e => search(e.target.value);
-  el("reset").onclick = () => { S.hidden.clear(); select(null); fit(); draw(); };
+  el("reset").onclick = () => {
+    S.hidden.clear(); S.selected = null; S.userZoomed = false;
+    el("sigonly").checked = S.sigOnly = false;
+    detail(null); draw(); fit(true);
+  };
   await load(index[0].file);
 }
 
 async function load(file) {
   el("loading").hidden = false;
   const data = await (await fetch("data/" + file)).json();
+  data.file = file;
   data.byId = new Map(data.nodes.map(n => [n.id, n]));
   data.clusterName = {};
   for (const n of data.nodes) {
     const best = data.clusterName[n.community];
     if (!best || n.scores.pagerank.value > best.scores.pagerank.value) data.clusterName[n.community] = n;
   }
-  S.data = data; S.selected = null; S.hidden.clear();
+  S.data = data; S.selected = null; S.userZoomed = false; S.hidden.clear();
   el("metric").innerHTML = data.metrics.map(m => `<option value="${m}">${LABEL[m] || m}</option>`).join("");
   if (!data.metrics.includes(S.metric)) S.metric = data.metrics[0];
   el("metric").value = S.metric;
   build();
-  summary(); findings(); draw(); fit();
+  ticks = 0;
+  summary(); findings(); draw();
   el("loading").hidden = true;
 }
 
@@ -77,20 +95,34 @@ function build() {
     .attr("markerWidth", 5).attr("markerHeight", 5).attr("orient", "auto")
     .append("path").attr("d", "M0,-4L9,0L0,4").attr("fill", "#3a4667");
 
+  // A 250-node graph with 6k edges needs a looser hand than a 30-node one.
+  const dense = links.length > 1500;
+  const comms = [...new Set(nodes.map(n => n.community))].sort((a, b) => a - b);
+  d.dense = dense;
   const w = el("canvas").clientWidth, h = el("canvas").clientHeight;
+  const R = Math.min(w, h) * (comms.length > 1 ? 0.5 : 0);
+  const spot = new Map(comms.map((c, i) => {
+    const a = (2 * Math.PI * i) / comms.length - Math.PI / 2;
+    return [c, [w / 2 + R * Math.cos(a), h / 2 + R * Math.sin(a)]];
+  }));
+  const anchor = n => spot.get(n.community);
   if (sim) sim.stop();
   sim = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(n => n.id).distance(l => 40 + 30 / (1 + l.weight)).strength(0.35))
-    .force("charge", d3.forceManyBody().strength(-260))
+    .force("link", d3.forceLink(links).id(n => n.id)
+      .distance(l => (dense ? 70 : 40 + 30 / (1 + l.weight))).strength(dense ? 0.03 : 0.35))
+    .force("charge", d3.forceManyBody().strength(dense ? -260 : -260))
     .force("center", d3.forceCenter(w / 2, h / 2))
     .force("collide", d3.forceCollide(n => radius(n) + 3))
-    .force("x", d3.forceX(w / 2).strength(0.03))
-    .force("y", d3.forceY(h / 2).strength(0.03))
-    .on("tick", tick);
+    // Pull each community toward its own anchor: without it a dense graph is
+    // one grey ball and the cluster colours say nothing about position.
+    .force("x", d3.forceX(n => anchor(n)[0]).strength(dense ? 0.45 : 0.05))
+    .force("y", d3.forceY(n => anchor(n)[1]).strength(dense ? 0.45 : 0.05))
+    .on("tick", tick)
+    .on("end", () => fit());
 
   const link = gLinks.selectAll("line").data(links).join("line")
-    .attr("stroke", "#2b3452").attr("stroke-width", 1)
-    .attr("marker-end", d.globals.directed ? "url(#arrow)" : null);
+    .attr("stroke", "#2b3452").attr("stroke-width", dense ? 0.6 : 1)
+    .attr("marker-end", d.globals.directed && !dense ? "url(#arrow)" : null);
 
   const node = gNodes.selectAll("circle").data(nodes, n => n.id).join("circle")
     .attr("stroke", "#0b1020").attr("stroke-width", 1.2)
@@ -99,7 +131,11 @@ function build() {
     .on("mousemove", (e) => moveTip(e))
     .on("mouseleave", () => { el("tip").hidden = true; draw(); })
     .call(d3.drag()
-      .on("start", (e, n) => { if (!e.active) sim.alphaTarget(0.25).restart(); n.fx = n.x; n.fy = n.y; })
+      .on("start", (e, n) => {
+        S.userZoomed = true;  // hands on the graph: stop re-framing under them
+        if (!e.active) sim.alphaTarget(0.25).restart();
+        n.fx = n.x; n.fy = n.y;
+      })
       .on("drag", (e, n) => { n.fx = e.x; n.fy = e.y; })
       .on("end", (e, n) => { if (!e.active) sim.alphaTarget(0); n.fx = n.fy = null; }));
 
@@ -113,8 +149,10 @@ function build() {
   d.view = { link, node };
 }
 
+let ticks = 0;
 function tick() {
   const { link, node } = S.data.view;
+  if (++ticks % 25 === 0) fit(false, true);  // keep the layout framed while it settles
   link.attr("x1", l => l.source.x).attr("y1", l => l.source.y)
       .attr("x2", l => l.target.x).attr("y2", l => l.target.y);
   node.attr("cx", n => n.x).attr("cy", n => n.y);
@@ -147,13 +185,13 @@ function draw() {
 
   link.attr("stroke", l => sel && (l.source.id === sel || l.target.id === sel) ? "#5eead4" : "#2b3452")
       .attr("stroke-opacity", l => {
-        if (!visible(l.source) || !visible(l.target)) return 0.03;
-        if (!sel) return 0.5;
-        return (l.source.id === sel || l.target.id === sel) ? 0.9 : 0.07;
+        if (!visible(l.source) || !visible(l.target)) return 0.02;
+        if (!sel) return d.dense ? 0.09 : 0.5;
+        return (l.source.id === sel || l.target.id === sel) ? 0.9 : 0.04;
       })
       .attr("stroke-width", l => (sel && (l.source.id === sel || l.target.id === sel) ? 1.8 : 1));
 
-  const cutoff = d3.quantile(d.nodes.filter(visible).map(n => n.scores[S.metric].value).sort(d3.ascending), 0.93) ?? 0;
+  const cutoff = d3.quantile(d.nodes.filter(visible).map(n => n.scores[S.metric].value).sort(d3.ascending), d.dense ? 0.94 : 0.9) ?? 0;
   gLabels.selectAll("text").attr("display", n => {
     if (!visible(n)) return "none";
     if (sel) return (n.id === sel || near.has(n.id)) ? null : "none";
@@ -166,10 +204,16 @@ function draw() {
   el("rank-metric").textContent = "· " + (LABEL[S.metric] || S.metric);
 }
 
-function fit() {
+function fit(force, instant) {
+  if (S.userZoomed && !force) return;
   const w = el("canvas").clientWidth, h = el("canvas").clientHeight;
-  svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(w * 0.05, h * 0.05).scale(0.9));
-  sim.force("center", d3.forceCenter(w / 2, h / 2)).alpha(0.4).restart();
+  const ns = S.data.sim.nodes.filter(n => isFinite(n.x));
+  if (!ns.length) return;
+  const [x0, x1] = d3.extent(ns, n => n.x), [y0, y1] = d3.extent(ns, n => n.y);
+  const k = Math.max(0.15, Math.min(1.6, 0.92 * Math.min(w / (x1 - x0 + 80), h / (y1 - y0 + 80))));
+  const t = d3.zoomIdentity.translate(w / 2, h / 2).scale(k)
+    .translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+  (instant ? svg : svg.transition().duration(450)).call(zoom.transform, t);
 }
 
 /* ---------- panels ---------- */
@@ -190,7 +234,8 @@ function summary() {
       <div class="stat"><b>${(g.density * 100).toFixed(2)}%</b><span>density</span></div>
     </div>
     <p class="src">${modVerdict}. Random graphs with identical degrees average ${g.modularity_null_mean}.
-    ${d.source ? "Source: " + d.source : ""}</p>`;
+    ${d.source ? "Source: " + d.source : ""}
+    · <a href="data/${d.file}" download>download JSON</a></p>`;
 }
 
 function topBy(metric) {
@@ -338,4 +383,13 @@ function search(q) {
   if (hit && hit.id !== S.selected) select(hit.id);
 }
 
-addEventListener("resize", () => { if (S.data) fit(); });
+let resizeTimer;
+addEventListener("resize", () => {
+  if (!S.data) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    measureChrome();
+    sim.force("center", d3.forceCenter(el("canvas").clientWidth / 2, el("canvas").clientHeight / 2))
+       .alpha(0.3).restart();
+  }, 200);
+});

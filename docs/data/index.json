@@ -1,5 +1,13 @@
 [
   {
+    "file": "wikipedia-concepts.json",
+    "name": "Wikipedia concept network",
+    "description": "Live Wikipedia link network seeded from Machine learning, Number theory, Cryptography, Molecular biology, Macroeconomics, Music theory. Nodes are articles, edges are real wikilinks.",
+    "source": "en.wikipedia.org (CC BY-SA 4.0)",
+    "nodes": 254,
+    "edges": 6528
+  },
+  {
     "file": "les-miserables.json",
     "name": "Les Miserables",
     "description": "Character co-occurrence network of Victor Hugo's Les Miserables.",

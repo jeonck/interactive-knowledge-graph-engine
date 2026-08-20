@@ -27,7 +27,12 @@ SKIP_EXACT = {"Wayback Machine", "Digital object identifier", "ISBN", "ISSN",
               "Springer Science+Business Media", "Elsevier", "Wikipedia",
               "Cambridge University Press", "Oxford University Press",
               "Princeton University Press", "MIT Press", "Association for Computing Machinery",
-              "Institute of Electrical and Electronics Engineers", "CiteSeerX"}
+              "Institute of Electrical and Electronics Engineers", "CiteSeerX",
+              "Routledge", "John Wiley & Sons", "Academic Press", "Taylor & Francis",
+              "McGraw Hill", "Penguin Books", "Sage Publishing", "Bibcode (identifier)",
+              "Virtual International Authority File", "Integrated Authority File"}
+SKIP_SUBSTR = ("University Press", "(journal)", "(publisher)", "(newspaper)", "(magazine)",
+               "(identifier)", "(disambiguation)")
 
 
 def load_edgelist(path, directed=True):
@@ -120,8 +125,10 @@ def _batched(titles, size=25):
 
 
 def _keep(title):
+    """Drop citation plumbing and meta-pages; they out-link everything and would
+    top every ranking without meaning anything."""
     return not (title.startswith(SKIP_PREFIX) or title in SKIP_EXACT
-                or "(disambiguation)" in title or "(identifier)" in title)
+                or any(bit in title for bit in SKIP_SUBSTR))
 
 
 def wikipedia_graph(seeds, size=200, pvdays=30, log=print):
@@ -152,7 +159,10 @@ def wikipedia_graph(seeds, size=200, pvdays=30, log=print):
         if i % 10 == 0:
             log(f"  {min((i + 1) * 25, len(titles))}/{len(titles)}")
 
-    keep = set(seeds) | set(sorted(views, key=lambda t: -views[t])[:size])
+    # Filter again: the API resolves redirects, so a blocked page can re-enter
+    # under an alias that passed the first check.
+    ranked = [t for t in sorted(views, key=lambda t: -views[t]) if _keep(t)]
+    keep = set(seeds) | set(ranked[:size])
     log(f"fetching links among the {len(keep)} kept articles ...")
     G = nx.DiGraph()
     for title in keep:
