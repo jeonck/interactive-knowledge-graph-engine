@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graph Engine — interactive knowledge graphs with significance testing</title>
+<meta name="description" content="Turn any network into an interactive knowledge graph. PageRank, HITS, betweenness and community structure, each validated against a degree-preserving null model so you only see patterns that randomness cannot explain.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='30' cy='35' r='12' fill='%235eead4'/><circle cx='72' cy='28' r='8' fill='%23a78bfa'/><circle cx='58' cy='74' r='10' fill='%23fbbf24'/><path d='M30 35L72 28M30 35L58 74M72 28L58 74' stroke='%23475569' stroke-width='4'/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo"></span>
+    <div>
+      <h1>Graph Engine</h1>
+      <p>Interactive knowledge graphs with statistical significance testing</p>
+    </div>
+  </div>
+  <nav>
+    <a href="#method">Method</a>
+    <a href="https://github.com/jeonck/interactive-knowledge-graph-engine">GitHub</a>
+  </nav>
+</header>
+
+<section class="toolbar">
+  <label>Dataset<select id="dataset"></select></label>
+  <label>Rank by<select id="metric"></select></label>
+  <label class="check"><input type="checkbox" id="sigonly"> Significant only <span class="hint" title="Keep only nodes whose score beats a degree-preserving random null at 5% FDR">?</span></label>
+  <label class="grow">Search<input id="search" type="search" placeholder="Find a node…" autocomplete="off"></label>
+  <button id="reset" type="button">Reset view</button>
+</section>
+
+<main>
+  <div id="canvas">
+    <svg id="graph"></svg>
+    <div id="tip" hidden></div>
+    <div id="legend"></div>
+    <div id="loading">Loading…</div>
+  </div>
+
+  <aside>
+    <div class="card" id="summary"></div>
+    <div class="card" id="findings"></div>
+    <div class="card">
+      <h2>Ranking <span id="rank-metric"></span></h2>
+      <table id="ranking"><tbody></tbody></table>
+    </div>
+    <div class="card" id="detail"><h2>Node</h2><p class="muted">Click a node to inspect every metric and its null-model comparison.</p></div>
+  </aside>
+</main>
+
+<section id="method">
+  <h2>How a score becomes a finding</h2>
+  <div class="grid">
+    <article>
+      <h3>1. Measure</h3>
+      <p>The Python engine computes PageRank, HITS hub and authority scores, betweenness, closeness and degree centrality with <code>networkx</code>, plus Louvain communities.</p>
+    </article>
+    <article>
+      <h3>2. Randomise</h3>
+      <p>The same graph is rewired many times with degree-preserving edge swaps. Every node keeps its exact in- and out-degree; only the wiring is random.</p>
+    </article>
+    <article>
+      <h3>3. Compare</h3>
+      <p>Each observed score becomes a z-score against its null distribution. A node is <em>significant</em> when it beats chance after a Benjamini–Hochberg correction at 5% FDR.</p>
+    </article>
+    <article>
+      <h3>4. Read</h3>
+      <p>PageRank answers <em>what is central</em>, HITS separates <em>collectors</em> from <em>sources</em>, betweenness finds <em>bridges</em> between domains, and modularity tells you whether the clusters are real.</p>
+    </article>
+  </div>
+  <p class="note">Degree centrality carries no z-score on purpose: the null model holds degree fixed, so degree can never be surprising. Significance here always means “more than this node's degree alone would predict”.</p>
+</section>
+
+<footer>
+  <p>Built with Python, networkx and D3.js · <a href="https://github.com/jeonck/interactive-knowledge-graph-engine">source &amp; CLI</a> · run it on your own edge list in one command.</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+[
+  {
+    "file": "les-miserables.json",
+    "name": "Les Miserables",
+    "description": "Character co-occurrence network of Victor Hugo's Les Miserables.",
+    "source": "Knuth, The Stanford GraphBase (1993)",
+    "nodes": 77,
+    "edges": 254
+  },
+  {
+    "file": "karate.json",
+    "name": "Karate",
+    "description": "Zachary's karate club: friendships in a university club that split in two.",
+    "source": "Zachary, J. Anthropological Research (1977)",
+    "nodes": 34,
+    "edges": 78
+  },
+  {
+    "file": "personal-knowledge-base.json",
+    "name": "Personal knowledge base",
+    "description": "A hand-written note graph of 25 study topics. Small on purpose: with this little evidence almost nothing clears the 5% FDR bar, which is exactly what an honest engine should say.",
+    "source": "examples/knowledge-base.csv in this repository",
+    "nodes": 25,
+    "edges": 33
+  }
+]

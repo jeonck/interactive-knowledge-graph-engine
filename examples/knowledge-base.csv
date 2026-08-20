@@ -1,0 +1,34 @@
+source,target,weight
+Linear algebra,Machine learning,2
+Probability,Machine learning,3
+Probability,Statistics,3
+Statistics,Machine learning,2
+Machine learning,Deep learning,3
+Deep learning,Computer vision,2
+Deep learning,Natural language processing,2
+Machine learning,Feature engineering,1
+Feature engineering,SQL,1
+SQL,Data warehouse,2
+Data warehouse,Dashboard,2
+Statistics,A/B testing,2
+A/B testing,Dashboard,1
+Python,Machine learning,3
+Python,SQL,1
+Python,Automation scripts,2
+Automation scripts,CI/CD,2
+CI/CD,Docker,2
+Docker,Kubernetes,2
+Kubernetes,Cloud cost,1
+Docker,Deep learning,1
+Cloud cost,Dashboard,1
+Number theory,Cryptography,3
+Linear algebra,Cryptography,1
+Cryptography,Kubernetes,1
+Cryptography,Blockchain,2
+Blockchain,Cloud cost,1
+Guitar practice,Music theory,3
+Music theory,Probability,1
+Music theory,Audio synthesis,2
+Audio synthesis,Deep learning,1
+Running log,Dashboard,1
+Running log,Statistics,1
