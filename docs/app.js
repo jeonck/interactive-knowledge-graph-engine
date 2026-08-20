@@ -106,6 +106,14 @@ function build() {
     return [c, [w / 2 + R * Math.cos(a), h / 2 + R * Math.sin(a)]];
   }));
   const anchor = n => spot.get(n.community);
+  d.reanchor = () => {  // keep the community anchors inside the pane after a resize
+    const w2 = el("canvas").clientWidth, h2 = el("canvas").clientHeight;
+    const R2 = Math.min(w2, h2) * (comms.length > 1 ? 0.5 : 0);
+    comms.forEach((c, i) => {
+      const a = (2 * Math.PI * i) / comms.length - Math.PI / 2;
+      spot.set(c, [w2 / 2 + R2 * Math.cos(a), h2 / 2 + R2 * Math.sin(a)]);
+    });
+  };
   if (sim) sim.stop();
   sim = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(links).id(n => n.id)
@@ -117,10 +125,19 @@ function build() {
     // one grey ball and the cluster colours say nothing about position.
     .force("x", d3.forceX(n => anchor(n)[0]).strength(dense ? 0.45 : 0.05))
     .force("y", d3.forceY(n => anchor(n)[1]).strength(dense ? 0.45 : 0.05))
+    .alphaDecay(dense ? 0.045 : 0.0228)
     .on("tick", tick)
     .on("end", () => fit());
 
-  const link = gLinks.selectAll("line").data(links).join("line")
+  // Guard against pathological edge counts. Metrics were
+  // computed on the whole graph in Python; only the picture is thinned, and the
+  // summary card says so.
+  const DRAW_CAP = 8000;  // only a pathological graph hits this
+  const step = Math.ceil(links.length / DRAW_CAP);
+  const drawn = step > 1 ? links.filter((_, i) => i % step === 0) : links;
+  d.drawnLinks = drawn.length; d.totalLinks = links.length;
+
+  const link = gLinks.selectAll("line").data(drawn).join("line")
     .attr("stroke", "#2b3452").attr("stroke-width", dense ? 0.6 : 1)
     .attr("marker-end", d.globals.directed && !dense ? "url(#arrow)" : null);
 
@@ -139,24 +156,24 @@ function build() {
       .on("drag", (e, n) => { n.fx = e.x; n.fy = e.y; })
       .on("end", (e, n) => { if (!e.active) sim.alphaTarget(0); n.fx = n.fy = null; }));
 
-  gLabels.selectAll("text").data(nodes, n => n.id).join("text")
+  const label = gLabels.selectAll("text").data(nodes, n => n.id).join("text")
     .text(n => n.label).attr("font-size", 10).attr("fill", "#c8d3ea")
     .attr("text-anchor", "middle").attr("pointer-events", "none")
     .attr("paint-order", "stroke").attr("stroke", "#0b1020").attr("stroke-width", 3);
 
   d.neighbors = new Map(nodes.map(n => [n.id, new Set()]));
   for (const l of links) { d.neighbors.get(l.source.id).add(l.target.id); d.neighbors.get(l.target.id).add(l.source.id); }
-  d.view = { link, node };
+  d.view = { link, node, label };
 }
 
 let ticks = 0;
 function tick() {
-  const { link, node } = S.data.view;
-  if (++ticks % 25 === 0) fit(false, true);  // keep the layout framed while it settles
+  const { link, node, label } = S.data.view;
+  if (++ticks % 10 === 0) fit(false, true);  // keep the layout framed while it settles
   link.attr("x1", l => l.source.x).attr("y1", l => l.source.y)
       .attr("x2", l => l.target.x).attr("y2", l => l.target.y);
   node.attr("cx", n => n.x).attr("cy", n => n.y);
-  gLabels.selectAll("text").attr("x", n => n.x).attr("y", n => n.y - radius(n) - 4);
+  label.attr("x", n => n.x).attr("y", n => n.y - radius(n) - 4);
 }
 
 const score = n => n.scores[S.metric] || { value: 0 };
@@ -192,7 +209,7 @@ function draw() {
       .attr("stroke-width", l => (sel && (l.source.id === sel || l.target.id === sel) ? 1.8 : 1));
 
   const cutoff = d3.quantile(d.nodes.filter(visible).map(n => n.scores[S.metric].value).sort(d3.ascending), d.dense ? 0.94 : 0.9) ?? 0;
-  gLabels.selectAll("text").attr("display", n => {
+  d.view.label.attr("display", n => {
     if (!visible(n)) return "none";
     if (sel) return (n.id === sel || near.has(n.id)) ? null : "none";
     return score(n).value >= cutoff ? null : "none";
@@ -234,7 +251,7 @@ function summary() {
       <div class="stat"><b>${(g.density * 100).toFixed(2)}%</b><span>density</span></div>
     </div>
     <p class="src">${modVerdict}. Random graphs with identical degrees average ${g.modularity_null_mean}.
-    ${d.source ? "Source: " + d.source : ""}
+    ${d.drawnLinks < d.totalLinks ? `Drawing ${d3.format(",")(d.drawnLinks)} of ${d3.format(",")(d.totalLinks)} edges for legibility; every metric above used all of them. ` : ""}${d.source ? "Source: " + d.source : ""}
     · <a href="data/${d.file}" download>download JSON</a></p>`;
 }
 
@@ -389,7 +406,9 @@ addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     measureChrome();
+    S.data.reanchor();
     sim.force("center", d3.forceCenter(el("canvas").clientWidth / 2, el("canvas").clientHeight / 2))
        .alpha(0.3).restart();
+    fit(false, true);
   }, 200);
 });

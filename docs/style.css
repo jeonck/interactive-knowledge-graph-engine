@@ -12,6 +12,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+html { background: #0b1020; }  /* no white band when the page over-scrolls */
 body {
   background: radial-gradient(1200px 600px at 20% -10%, #1b2545 0%, var(--bg) 60%) fixed;
   color: var(--text);
